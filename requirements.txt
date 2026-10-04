@@ -2,4 +2,7 @@ streamlit
 pandas
 numpy
 plotly
+matplotlib
+reportlab
 git+https://github.com/streamlit/gsheets-connection.git@main
+
