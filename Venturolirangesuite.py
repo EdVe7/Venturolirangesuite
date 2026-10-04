@@ -8,6 +8,7 @@ UI mobile-first, persistenza Google Sheets (stesse colonne e secrets dell'origin
 from __future__ import annotations
 
 import datetime
+import io
 import time
 from typing import Any
 
@@ -137,10 +138,21 @@ MENTAL_OPTIONS = [
 
 CLUBS_LONG = [
     "DR",
+    "Mini DR",
+    "2W",
     "3W",
+    "4W",
     "5W",
     "7W",
+    "9W",
+    "2H",
     "3H",
+    "4H",
+    "5H",
+    "6H",
+    "7H",
+    "1i",
+    "2i",
     "3i",
     "4i",
     "5i",
@@ -149,12 +161,49 @@ CLUBS_LONG = [
     "8i",
     "9i",
     "PW",
-    "AW",
     "GW",
+    "AW",
     "SW",
     "LW",
+    "UW",
+    "48°",
+    "50°",
+    "52°",
+    "54°",
+    "56°",
+    "58°",
+    "60°",
+    "64°",
+    "Chipper",
 ]
-CLUBS_SHORT = ["LW", "SW", "GW", "AW", "PW", "9i", "8i", "7i"]
+CLUBS_SHORT = [
+    "LW",
+    "SW",
+    "GW",
+    "AW",
+    "PW",
+    "UW",
+    "48°",
+    "50°",
+    "52°",
+    "54°",
+    "56°",
+    "58°",
+    "60°",
+    "64°",
+    "9i",
+    "8i",
+    "7i",
+    "6i",
+    "5i",
+    "4i",
+    "3i",
+    "Chipper",
+    "Putter",
+    "3H",
+    "4H",
+    "5H",
+]
 
 PERIOD_LABELS = [
     "Sessione corrente",
@@ -737,15 +786,14 @@ def run_splash_sequence() -> None:
                     f"<h1 style='text-align:center;color:{GOLD};'>SUPERNOVA</h1>",
                     unsafe_allow_html=True,
                 )
-    time.sleep(3.0)
+    time.sleep(1.5)
     holder.empty()
 
 
 def login_screen() -> None:
     brand_header("Accesso")
-    st.caption("Inserisci le credenziali per salvare i tuoi colpi sul foglio collegato.")
+    st.caption("Inserisci lo username per salvare i tuoi colpi sul foglio collegato.")
     u = st.text_input("Username / ID atleta", key="login_user").strip()
-    p = st.text_input("Password", type="password", key="login_pass")
     privacy = st.checkbox(
         "Ho letto e accetto l'informativa privacy e il trattamento dei dati.",
         key="privacy_ok",
@@ -757,21 +805,10 @@ def login_screen() -> None:
         if not u:
             st.error("Inserisci uno username.")
             return
-        pwd_ok = p == PASSWORD_DEFAULT
-        env_p = None
-        try:
-            env_p = st.secrets.get("APP_PASSWORD")
-        except Exception:
-            env_p = None
-        if env_p:
-            pwd_ok = pwd_ok or (p == str(env_p))
-        if pwd_ok:
-            st.session_state["logged_in"] = True
-            st.session_state["user"] = u.upper()
-            st.session_state["post_auth_logo_pending"] = True
-            st.rerun()
-        else:
-            st.error("Credenziali non valide.")
+        st.session_state["logged_in"] = True
+        st.session_state["user"] = u.upper()
+        st.session_state["post_auth_logo_pending"] = True
+        st.rerun()
     brand_footer()
     st.stop()
 
@@ -1662,6 +1699,773 @@ def review_panel(user: str, session_name: str) -> None:
 
 
 # =============================================================================
+# Export PDF — stesso contenuto della Review, tutti i settori nello stesso report
+# =============================================================================
+def _pdf_fmt(v: Any, kind: str = "plain") -> str:
+    if v is None or (isinstance(v, float) and np.isnan(v)) or pd.isna(v):
+        return "—"
+    if kind == "sg":
+        try:
+            return f"{float(v):+.3f}"
+        except (TypeError, ValueError):
+            return "—"
+    if kind == "num2":
+        try:
+            return f"{float(v):.2f}"
+        except (TypeError, ValueError):
+            return "—"
+    if kind == "pct":
+        try:
+            return f"{float(v):.1f}%"
+        except (TypeError, ValueError):
+            return "—"
+    if kind == "date":
+        try:
+            if hasattr(v, "strftime"):
+                return v.strftime("%d/%m/%Y")
+            return str(v)[:10]
+        except Exception:
+            return str(v)
+    return str(v)
+
+
+def _putting_make_frame(df_putt: pd.DataFrame) -> pd.DataFrame:
+    if df_putt.empty:
+        return pd.DataFrame(columns=["Fascia di partenza", "Putt", "Realizzati", "% Made"])
+    d = df_putt.copy()
+    d["sd"] = pd.to_numeric(d["Start_Dist_m"], errors="coerce")
+    d["ed"] = pd.to_numeric(d["End_Dist_m"], errors="coerce")
+    d = d.dropna(subset=["sd"])
+    rows = []
+    for hi in range(15, 0, -2):
+        lo = max(hi - 2, 0)
+        sub = d[(d["sd"] > lo) & (d["sd"] <= hi)]
+        n = len(sub)
+        made = int((sub["ed"].fillna(999) <= 0).sum())
+        pct = (made / n * 100.0) if n else 0.0
+        rows.append({"Fascia di partenza": f"{lo}–{hi} m", "Putt": n, "Realizzati": made, "% Made": pct})
+    return pd.DataFrame(rows)
+
+
+def _trend_frame(df_sector: pd.DataFrame) -> pd.DataFrame:
+    if df_sector.empty:
+        return pd.DataFrame()
+    d = df_sector.copy()
+    d["Date"] = pd.to_datetime(d["Date"], errors="coerce")
+    d = d.dropna(subset=["Date"])
+    if d.empty:
+        return pd.DataFrame()
+    d["Rating"] = pd.to_numeric(d["Rating"], errors="coerce")
+    d["Strokes_Gained"] = pd.to_numeric(d["Strokes_Gained"], errors="coerce")
+    return (
+        d.groupby("Date", as_index=False)
+        .agg(
+            rating_mean=("Rating", "mean"),
+            sg_mean=("Strokes_Gained", "mean"),
+            shots=("Category", "count"),
+        )
+        .sort_values("Date")
+    )
+
+
+def _club_rank_frame(df_sector: pd.DataFrame) -> pd.DataFrame:
+    d = df_sector.copy()
+    if d.empty:
+        return pd.DataFrame()
+    d["Rating"] = pd.to_numeric(d["Rating"], errors="coerce")
+    d["Strokes_Gained"] = pd.to_numeric(d["Strokes_Gained"], errors="coerce")
+    return (
+        d.groupby("Club", as_index=False)
+        .agg(
+            Colpi=("Club", "count"),
+            Voto_medio=("Rating", "mean"),
+            SG_medio=("Strokes_Gained", "mean"),
+        )
+        .sort_values(["Colpi", "Voto_medio"], ascending=[False, False])
+    )
+
+
+def _sg_distance_frame(df_sector: pd.DataFrame) -> pd.DataFrame:
+    d = df_sector.copy()
+    d["Start_Dist_m"] = pd.to_numeric(d["Start_Dist_m"], errors="coerce")
+    d["Strokes_Gained"] = pd.to_numeric(d["Strokes_Gained"], errors="coerce")
+    d = d.dropna(subset=["Start_Dist_m", "Strokes_Gained"])
+    if d.empty:
+        return pd.DataFrame()
+    bins = [0, 2, 5, 10, 20, 35, 50, 80, 130, 200, 600]
+    labels = ["0-2", "2-5", "5-10", "10-20", "20-35", "35-50", "50-80", "80-130", "130-200", "200+"]
+    d["Distance_Bucket"] = pd.cut(
+        d["Start_Dist_m"], bins=bins, labels=labels, include_lowest=True, right=False
+    )
+    return (
+        d.groupby("Distance_Bucket", as_index=False)
+        .agg(Colpi=("Strokes_Gained", "count"), SG_medio=("Strokes_Gained", "mean"))
+        .dropna()
+    )
+
+
+def _bias_frame(df_sector: pd.DataFrame) -> pd.DataFrame:
+    d = df_sector.copy()
+    d["x"] = pd.to_numeric(d["Proximity_Lateral_m"], errors="coerce")
+    d = d.dropna(subset=["x"])
+    if d.empty:
+        return pd.DataFrame()
+    left = int((d["x"] < 0).sum())
+    right = int((d["x"] > 0).sum())
+    center = int((d["x"] == 0).sum())
+    total = max(len(d), 1)
+    return pd.DataFrame(
+        {
+            "Direzione": ["Sinistra", "In linea", "Destra"],
+            "Colpi": [left, center, right],
+            "Percentuale": [left / total * 100, center / total * 100, right / total * 100],
+        }
+    )
+
+
+def _value_counts_series(df: pd.DataFrame, column: str) -> pd.Series:
+    if df.empty or column not in df.columns:
+        return pd.Series(dtype=int)
+    if column == "Rating":
+        s = pd.to_numeric(df[column], errors="coerce").dropna().astype(int).astype(str)
+    else:
+        s = df[column].astype(str)
+    s = s.replace("nan", "(vuoto)").replace("", "(vuoto)")
+    return s.value_counts()
+
+
+def build_review_pdf(
+    df_f: pd.DataFrame,
+    user: str,
+    session_name: str,
+    period: str,
+) -> bytes:
+    """Report unico RANGE + SHORT + PUTT con le stesse tabelle/grafici della Review."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Image as RLImage
+    from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+    palette = [ORANGE, GOLD, BLACK_SOFT, ACCENT_BLUE, SUCCESS_GREEN, GOLD_DARK, "#D96E0A", "#8A6F55"]
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=1.2 * cm,
+        rightMargin=1.2 * cm,
+        topMargin=1.1 * cm,
+        bottomMargin=1.1 * cm,
+        title=f"{APP_NAME} — Review {user}",
+        author="Andrea Zanardelli",
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "ZrsTitle",
+        parent=styles["Heading1"],
+        fontSize=16,
+        textColor=rl_colors.HexColor(BLACK),
+        spaceAfter=2,
+        leading=20,
+    )
+    h2 = ParagraphStyle(
+        "ZrsH2",
+        parent=styles["Heading2"],
+        fontSize=12,
+        textColor=rl_colors.HexColor(BLACK),
+        spaceBefore=8,
+        spaceAfter=4,
+        borderPadding=2,
+    )
+    h3 = ParagraphStyle(
+        "ZrsH3",
+        parent=styles["Heading3"],
+        fontSize=10,
+        textColor=rl_colors.HexColor(GOLD_DARK),
+        spaceBefore=6,
+        spaceAfter=3,
+    )
+    body = ParagraphStyle(
+        "ZrsBody",
+        parent=styles["Normal"],
+        fontSize=8,
+        textColor=rl_colors.HexColor(MUTED),
+        leading=11,
+        spaceAfter=4,
+    )
+    kpi = ParagraphStyle(
+        "ZrsKpi",
+        parent=styles["Normal"],
+        fontSize=9,
+        textColor=rl_colors.HexColor(TEXT),
+        leading=12,
+    )
+    story: list[Any] = []
+
+    def add_header_row() -> None:
+        logo_flow = None
+        try:
+            logo_flow = RLImage("logo.png", width=2.6 * cm, height=2.6 * cm)
+            logo_flow.hAlign = "LEFT"
+        except Exception:
+            logo_flow = Paragraph(f"<b>{APP_NAME}</b>", title_style)
+        right = [
+            Paragraph("Report Review — Range Data Suite", title_style),
+            Paragraph(
+                f"Atleta <b>{user}</b> · Periodo <b>{period}</b> · Sessione <b>{session_name}</b><br/>"
+                f"Generato il {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')} · "
+                f"colpi nel filtro: <b>{len(df_f)}</b>",
+                body,
+            ),
+        ]
+        hdr = Table([[logo_flow, right]], colWidths=[3.2 * cm, 14.8 * cm])
+        hdr.setStyle(
+            TableStyle(
+                [
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ("LINEBELOW", (0, 0), (-1, -1), 1.2, rl_colors.HexColor(ORANGE)),
+                ]
+            )
+        )
+        story.append(hdr)
+        story.append(Spacer(1, 0.25 * cm))
+
+    def fig_image(fig: Any, w: float = 17.5, h: float = 6.2) -> Any:
+        img_buf = io.BytesIO()
+        fig.savefig(img_buf, format="png", dpi=130, bbox_inches="tight", facecolor=OFF_WHITE)
+        plt.close(fig)
+        img_buf.seek(0)
+        img = RLImage(img_buf, width=w * cm, height=h * cm)
+        img.hAlign = "CENTER"
+        return img
+
+    def add_table(headers: list[str], rows: list[list[str]], col_w: list[float] | None = None) -> None:
+        if not rows:
+            story.append(Paragraph("Nessun dato per questa tabella.", body))
+            return
+        data = [headers] + rows
+        usable = 17.6 * cm
+        if col_w is None:
+            n = len(headers)
+            col_w = [usable / n] * n
+        tbl = Table(data, colWidths=col_w, repeatRows=1)
+        tbl.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor(ORANGE)),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 0), (-1, -1), 0.4, rl_colors.HexColor(CARD_BORDER)),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor(OFF_WHITE)]),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        story.append(tbl)
+        story.append(Spacer(1, 0.18 * cm))
+
+    def add_pie(series: pd.Series, title: str, caption: str) -> None:
+        story.append(Paragraph(title, h3))
+        story.append(Paragraph(caption, body))
+        if series.empty:
+            story.append(Paragraph("Nessun dato per questo grafico.", body))
+            return
+        fig, ax = plt.subplots(figsize=(6.4, 3.4))
+        fig.patch.set_facecolor(OFF_WHITE)
+        ax.set_facecolor(WHITE)
+        colors = (palette * ((len(series) // len(palette)) + 1))[: len(series)]
+        ax.pie(
+            series.values,
+            labels=list(series.index),
+            autopct="%1.0f%%",
+            colors=colors,
+            startangle=90,
+            textprops={"fontsize": 8},
+            wedgeprops={"width": 0.55},
+        )
+        ax.set_title(title, fontsize=10, color=BLACK, pad=8)
+        story.append(fig_image(fig, 16.5, 6.0))
+
+    def add_dispersion(dsec: pd.DataFrame, title: str) -> None:
+        d = dsec.copy()
+        d["x_lateral_m"] = pd.to_numeric(d["Proximity_Lateral_m"], errors="coerce")
+        d["y_depth_m"] = pd.to_numeric(d["Proximity_Depth_m"], errors="coerce")
+        d = d.dropna(subset=["x_lateral_m", "y_depth_m"])
+        story.append(Paragraph(title, h3))
+        story.append(
+            Paragraph(
+                "Vista planimetrica: incrocio assi = bersaglio/buca. X = errore laterale (m); Y = errore profondità (m).",
+                body,
+            )
+        )
+        if d.empty:
+            story.append(Paragraph("Aggiungi errore laterale e profondità per vedere la dispersione dall'alto.", body))
+            return
+        fig, ax = plt.subplots(figsize=(6.6, 4.2))
+        fig.patch.set_facecolor(OFF_WHITE)
+        ax.set_facecolor(WHITE)
+        clubs = list(d["Club"].astype(str).unique())
+        for i, cl in enumerate(clubs):
+            sub = d[d["Club"].astype(str) == cl]
+            ax.scatter(
+                sub["x_lateral_m"],
+                sub["y_depth_m"],
+                s=28,
+                alpha=0.85,
+                color=palette[i % len(palette)],
+                label=cl,
+                edgecolors=BLACK_SOFT,
+                linewidths=0.3,
+            )
+        ax.axhline(0, color=GOLD, ls="--", lw=1.2)
+        ax.axvline(0, color=GOLD, ls="--", lw=1.2)
+        ax.set_xlabel("Errore laterale (m)")
+        ax.set_ylabel("Errore profondità (m)")
+        ax.set_title(title, fontsize=10)
+        ax.grid(color="#E8E0D4", lw=0.6)
+        if len(clubs) <= 12:
+            ax.legend(fontsize=7, frameon=True, loc="best")
+        story.append(fig_image(fig, 16.5, 8.0))
+
+    def add_shots_table(dsec: pd.DataFrame) -> None:
+        shots_cols = [
+            "Date",
+            "Time",
+            "SessionName",
+            "Category",
+            "Club",
+            "Impact",
+            "Curvature",
+            "Trajectory",
+            "Direction_LR",
+            "Proximity_Lateral_m",
+            "Proximity_Depth_m",
+            "Rating",
+            "Strokes_Gained",
+        ]
+        use = [c for c in shots_cols if c in dsec.columns]
+        shots_table = dsec[use].sort_values(by=["Date", "Time"], ascending=False).reset_index(drop=True)
+        story.append(Paragraph("Dettaglio colpo per colpo", h3))
+        headers = use
+        rows = []
+        for _, r in shots_table.iterrows():
+            row = []
+            for c in use:
+                if c == "Date":
+                    row.append(_pdf_fmt(r[c], "date"))
+                elif c == "Strokes_Gained":
+                    row.append(_pdf_fmt(r[c], "sg"))
+                elif c in ("Proximity_Lateral_m", "Proximity_Depth_m", "Rating"):
+                    row.append(_pdf_fmt(r[c], "num2"))
+                else:
+                    row.append(_pdf_fmt(r[c]))
+            rows.append(row)
+        add_table(headers, rows)
+
+    def add_sector_block(sector: str) -> None:
+        dsec = df_f[df_f["Category"] == sector]
+        story.append(Paragraph(CATEGORIES[sector], h2))
+        story.append(
+            Paragraph(
+                f"Utente {user} · periodo {period} · settore {CATEGORIES[sector]} · n = {len(dsec)} colpi.",
+                body,
+            )
+        )
+        if dsec.empty:
+            story.append(Paragraph("Nessun colpo in questo filtro.", body))
+            return
+
+        rmean = pd.to_numeric(dsec["Rating"], errors="coerce").mean()
+        sg_series = pd.to_numeric(dsec["Strokes_Gained"], errors="coerce").dropna()
+        story.append(
+            Paragraph(
+                f"<b>Colpi registrati:</b> {len(dsec)} &nbsp;&nbsp; "
+                f"<b>Voto medio:</b> {_pdf_fmt(rmean, 'num2')} &nbsp;&nbsp; "
+                f"<b>SG medio:</b> {_pdf_fmt(sg_series.mean() if len(sg_series) else np.nan, 'sg')}",
+                kpi,
+            )
+        )
+        story.append(Spacer(1, 0.12 * cm))
+        add_shots_table(dsec)
+
+        clubs = _club_rank_frame(dsec)
+        if not clubs.empty:
+            story.append(Paragraph("Medie per colpo/bastone nel settore selezionato", h3))
+            add_table(
+                ["Club", "Colpi", "Media_Voto", "Media_SG"],
+                [
+                    [
+                        _pdf_fmt(r["Club"]),
+                        str(int(r["Colpi"])),
+                        _pdf_fmt(r["Voto_medio"], "num2"),
+                        _pdf_fmt(r["SG_medio"], "sg"),
+                    ]
+                    for _, r in clubs.iterrows()
+                ],
+            )
+
+        if sg_series.empty:
+            story.append(Paragraph("Colonna strokes gained vuota per questo periodo.", body))
+        else:
+            story.append(Paragraph("Riepilogo Strokes Gained (modello practice)", h3))
+            story.append(
+                Paragraph(
+                    "Valori positivi indicano un colpo migliore della media di riferimento usata dal modello "
+                    "(approssimazione didattica, non ufficiale PGA).",
+                    body,
+                )
+            )
+            story.append(
+                Paragraph(
+                    f"Media SG {_pdf_fmt(sg_series.mean(), 'sg')} · Totale SG {_pdf_fmt(sg_series.sum(), 'sg')} · "
+                    f"Colpi {len(sg_series)} · Migliore {_pdf_fmt(sg_series.max(), 'sg')}",
+                    kpi,
+                )
+            )
+            fig, ax = plt.subplots(figsize=(6.6, 3.2))
+            fig.patch.set_facecolor(OFF_WHITE)
+            ax.set_facecolor(WHITE)
+            ax.hist(sg_series, bins=20, color=ORANGE, edgecolor=WHITE)
+            ax.axvline(0, color=BLACK_SOFT, ls="--")
+            ax.set_xlabel("SG per colpo")
+            ax.set_ylabel("Frequenza")
+            ax.set_title("Distribuzione SG colpo per colpo")
+            ax.grid(color="#E8E0D4", axis="y", lw=0.6)
+            story.append(fig_image(fig, 16.5, 5.8))
+
+        grp = _trend_frame(dsec)
+        if not grp.empty:
+            story.append(Paragraph("Trend giornaliero", h3))
+            story.append(
+                Paragraph(
+                    "Linea ocra = voto medio (1–5); linea scura = SG medio. Due assi Y.",
+                    body,
+                )
+            )
+            fig, ax = plt.subplots(figsize=(6.6, 3.4))
+            fig.patch.set_facecolor(OFF_WHITE)
+            ax.set_facecolor(WHITE)
+            ax.plot(grp["Date"], grp["rating_mean"], color=GOLD, marker="o", lw=2.4, label="Voto medio")
+            ax.set_ylabel("Voto medio (1-5)", color=GOLD_DARK)
+            ax2 = ax.twinx()
+            ax2.plot(grp["Date"], grp["sg_mean"], color="#5c4a12", marker="o", lw=1.8, label="SG medio")
+            ax2.set_ylabel("SG medio")
+            ax.set_xlabel("Giorno")
+            ax.set_title(f"Andamento performance — {CATEGORIES[sector]}")
+            ax.grid(color="#E8E0D4", lw=0.6)
+            fig.autofmt_xdate()
+            story.append(fig_image(fig, 16.5, 6.0))
+
+        if not clubs.empty:
+            story.append(Paragraph("Ranking bastoni (nel filtro scelto)", h3))
+            add_table(
+                ["Club", "Colpi", "Voto_medio", "SG_medio"],
+                [
+                    [
+                        _pdf_fmt(r["Club"]),
+                        str(int(r["Colpi"])),
+                        _pdf_fmt(r["Voto_medio"], "num2"),
+                        _pdf_fmt(r["SG_medio"], "sg"),
+                    ]
+                    for _, r in clubs.iterrows()
+                ],
+            )
+
+        distg = _sg_distance_frame(dsec)
+        if not distg.empty:
+            story.append(Paragraph("Strokes gained per fascia distanza", h3))
+            story.append(
+                Paragraph(
+                    "Aiuta a capire in quali distanze perdi o guadagni colpi rispetto al benchmark usato.",
+                    body,
+                )
+            )
+            fig, ax = plt.subplots(figsize=(6.6, 3.2))
+            fig.patch.set_facecolor(OFF_WHITE)
+            ax.set_facecolor(WHITE)
+            colors_b = [SUCCESS_GREEN if v >= 0 else "#d45858" for v in distg["SG_medio"]]
+            ax.bar(distg["Distance_Bucket"].astype(str), distg["SG_medio"], color=colors_b)
+            ax.axhline(0, color=BLACK_SOFT, ls="--")
+            ax.set_xlabel("Fascia metri")
+            ax.set_ylabel("SG medio")
+            ax.set_title("Efficienza SG per distanza iniziale")
+            ax.grid(color="#E8E0D4", axis="y", lw=0.6)
+            story.append(fig_image(fig, 16.5, 5.8))
+            add_table(
+                ["Distance_Bucket", "Colpi", "SG_medio"],
+                [
+                    [_pdf_fmt(r["Distance_Bucket"]), str(int(r["Colpi"])), _pdf_fmt(r["SG_medio"], "sg")]
+                    for _, r in distg.iterrows()
+                ],
+            )
+
+        if sector in ("RANGE", "SHORT"):
+            bias = _bias_frame(dsec)
+            if not bias.empty:
+                story.append(Paragraph("Directional bias", h3))
+                story.append(
+                    Paragraph(
+                        "Distribuzione colpi a sinistra/destra/centrali rispetto alla linea target.",
+                        body,
+                    )
+                )
+                fig, ax = plt.subplots(figsize=(6.2, 3.0))
+                fig.patch.set_facecolor(OFF_WHITE)
+                ax.set_facecolor(WHITE)
+                cmap = {"Sinistra": "#d45858", "In linea": SUCCESS_GREEN, "Destra": ACCENT_BLUE}
+                ax.bar(bias["Direzione"], bias["Percentuale"], color=[cmap[x] for x in bias["Direzione"]])
+                ax.set_ylabel("% colpi")
+                ax.set_title("Bias laterale medio")
+                ax.grid(color="#E8E0D4", axis="y", lw=0.6)
+                story.append(fig_image(fig, 16.5, 5.4))
+
+        if sector == "RANGE":
+            story.append(Paragraph("Analisi tecnica range", h3))
+            add_pie(
+                _value_counts_series(dsec, "Impact"),
+                "Tipologia di impatto — percentuali",
+                "Legenda: ripartizione percentuale degli impatti dichiarati.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Curvature"),
+                "Curvatura — percentuali",
+                "Legenda: forma di volo predominante nel campione.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Direction_LR"),
+                "Tendenza direzionale vs bersaglio",
+                "Legenda: orientamento medio rispetto alla linea di punteria.",
+            )
+            add_dispersion(dsec, "Dispersione dall’alto — RANGE")
+            add_pie(
+                _value_counts_series(dsec, "Rating"),
+                "Distribuzione voto colpo (1–5)",
+                "Legenda: percentuale di colpi per ogni voto di qualità auto-valutata.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Mental_Reaction"),
+                "Reazione mentale",
+                "Legenda: mix delle reazioni emotive/cognitive dichiarate dopo il colpo.",
+            )
+        elif sector == "SHORT":
+            story.append(Paragraph("Analisi tecnica gioco corto", h3))
+            add_pie(_value_counts_series(dsec, "Lie_Start"), "Lie iniziale", "Legenda: da dove parte la palla più spesso.")
+            add_pie(_value_counts_series(dsec, "Lie_End"), "Lie finale", "Legenda: dove finisce la palla dopo il colpo.")
+            add_pie(_value_counts_series(dsec, "Impact"), "Impatto", "Legenda: qualità di contatto dichiarata.")
+            add_pie(_value_counts_series(dsec, "Direction_LR"), "Linea vs buca", "Legenda: tendenza destra/sinistra.")
+            add_dispersion(dsec, "Dispersione dall’alto — gioco corto")
+            add_pie(
+                _value_counts_series(dsec, "Rating"),
+                "Distribuzione voto colpo (1–5)",
+                "Legenda: percentuale di colpi per ogni voto di qualità auto-valutata.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Mental_Reaction"),
+                "Reazione mentale",
+                "Legenda: mix delle reazioni emotive/cognitive dichiarate dopo il colpo.",
+            )
+        else:
+            story.append(Paragraph("Analisi putting", h3))
+            add_pie(
+                _value_counts_series(dsec, "Impact"),
+                "Impatto sulla faccia",
+                "Legenda: zona di contatto sul putter.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Trajectory"),
+                "Traiettoria di rotazione",
+                "Legenda: pull/dritta/push.",
+            )
+            pm = _putting_make_frame(dsec)
+            story.append(Paragraph("Tabella realizzazione putt per distanza di partenza", h3))
+            story.append(
+                Paragraph(
+                    "Percentuale di putt chiusi in buca al primo tentativo (distanza finale = 0 m), "
+                    "raggruppati per ampiezza di 2 metri fino a 15 m.",
+                    body,
+                )
+            )
+            if pm.empty:
+                story.append(Paragraph("Nessun putt nel periodo.", body))
+            else:
+                add_table(
+                    ["Fascia di partenza", "Putt", "Realizzati", "% Made"],
+                    [
+                        [
+                            _pdf_fmt(r["Fascia di partenza"]),
+                            str(int(r["Putt"])),
+                            str(int(r["Realizzati"])),
+                            _pdf_fmt(r["% Made"], "pct"),
+                        ]
+                        for _, r in pm.iterrows()
+                    ],
+                )
+            add_pie(
+                _value_counts_series(dsec, "Rating"),
+                "Distribuzione voto colpo (1–5)",
+                "Legenda: percentuale di colpi per ogni voto di qualità auto-valutata.",
+            )
+            add_pie(
+                _value_counts_series(dsec, "Mental_Reaction"),
+                "Reazione mentale",
+                "Legenda: mix delle reazioni emotive/cognitive dichiarate dopo il colpo.",
+            )
+
+    add_header_row()
+    story.append(
+        Paragraph(
+            "Questo documento raccoglie in un unico report le tre sezioni della Review "
+            "(gioco lungo, gioco corto, putting) sullo stesso periodo selezionato.",
+            body,
+        )
+    )
+
+    avg_by_cat = (
+        df_f.groupby("Category", dropna=False)
+        .agg(
+            Colpi=("Rating", "count"),
+            Media_Voto=("Rating", "mean"),
+            Media_SG=("Strokes_Gained", "mean"),
+        )
+        .reset_index()
+    )
+    if not avg_by_cat.empty:
+        avg_by_cat["Category"] = avg_by_cat["Category"].map(CATEGORIES).fillna(avg_by_cat["Category"])
+        story.append(Paragraph("Medie per area (periodo selezionato)", h3))
+        add_table(
+            ["Category", "Colpi", "Media_Voto", "Media_SG"],
+            [
+                [
+                    _pdf_fmt(r["Category"]),
+                    str(int(r["Colpi"])) if pd.notna(r["Colpi"]) else "0",
+                    _pdf_fmt(r["Media_Voto"], "num2"),
+                    _pdf_fmt(r["Media_SG"], "sg"),
+                ]
+                for _, r in avg_by_cat.iterrows()
+            ],
+        )
+
+    no_short = df_f[df_f["Category"] != "SHORT"]
+    story.append(Paragraph("Confronto medie SG inclusi / non inclusi", h3))
+    add_table(
+        ["Vista media", "Colpi", "Media Voto", "Media SG"],
+        [
+            [
+                "Con SG inclusi (tutte le categorie)",
+                str(len(df_f)),
+                _pdf_fmt(pd.to_numeric(df_f["Rating"], errors="coerce").mean(), "num2"),
+                _pdf_fmt(pd.to_numeric(df_f["Strokes_Gained"], errors="coerce").mean(), "sg"),
+            ],
+            [
+                "Con SG esclusi (senza SHORT)",
+                str(len(no_short)),
+                _pdf_fmt(pd.to_numeric(no_short["Rating"], errors="coerce").mean(), "num2"),
+                _pdf_fmt(pd.to_numeric(no_short["Strokes_Gained"], errors="coerce").mean(), "sg"),
+            ],
+        ],
+    )
+
+    add_sector_block("RANGE")
+    story.append(PageBreak())
+    add_header_row()
+    add_sector_block("SHORT")
+    story.append(PageBreak())
+    add_header_row()
+    add_sector_block("PUTT")
+
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(
+        Paragraph(
+            f"© {datetime.date.today().year} Andrea Zanardelli · "
+            "Co-designed by Andrea Zanardelli and Edoardo Venturoli · www.zanardelligolf.com",
+            body,
+        )
+    )
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
+def pdf_panel(user: str, session_name: str) -> None:
+    render_hero(
+        "Export PDF della Review",
+        "Scegli il periodo, poi genera un unico report con gioco lungo, gioco corto e putting "
+        "(stesse tabelle e grafici della Review, solo sui settori con dati).",
+        ["RANGE", "SHORT", "PUTT", "PDF"],
+    )
+    render_panel(
+        "Periodo del report",
+        "Stessi filtri temporali della Review. Il PDF include i tre settori nello stesso documento.",
+    )
+    period = st.selectbox("Periodo", PERIOD_LABELS, key="pdf_period")
+    df_all = load_data()
+    df_u = df_all[df_all["User"] == user]
+    df_f = filter_period(df_u, session_name, period)
+
+    n_r = int((df_f["Category"] == "RANGE").sum()) if not df_f.empty else 0
+    n_s = int((df_f["Category"] == "SHORT").sum()) if not df_f.empty else 0
+    n_p = int((df_f["Category"] == "PUTT").sum()) if not df_f.empty else 0
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Colpi filtro", len(df_f))
+    m2.metric("Range", n_r)
+    m3.metric("Gioco corto", n_s)
+    m4.metric("Putting", n_p)
+
+    if df_f.empty:
+        st.info("Nessun colpo in questo filtro. Registra dati o cambia periodo.")
+        brand_footer()
+        return
+
+    if st.button("Genera PDF Review", type="primary", use_container_width=True, key="pdf_build_btn"):
+        try:
+            st.session_state["pdf_bytes"] = build_review_pdf(df_f, user, session_name, period)
+            st.session_state["pdf_name"] = (
+                f"ZRS_Review_{user}_{period.replace(' ', '_')}_{datetime.date.today():%Y%m%d}.pdf"
+            )
+            st.success("PDF pronto. Scaricalo con il tasto sotto.")
+        except ImportError:
+            st.error(
+                "Per il PDF servono i pacchetti reportlab e matplotlib. "
+                "Aggiorna requirements.txt e rideploya l'app (il collegamento Google Sheets resta invariato)."
+            )
+            brand_footer()
+            return
+        except Exception as exc:
+            st.error(f"Impossibile generare il PDF: {exc}")
+            brand_footer()
+            return
+
+    pdf_bytes = st.session_state.get("pdf_bytes")
+    pdf_name = st.session_state.get("pdf_name", "ZRS_Review.pdf")
+    if pdf_bytes:
+        st.download_button(
+            label="Scarica PDF",
+            data=pdf_bytes,
+            file_name=pdf_name,
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True,
+            key="pdf_download_btn",
+        )
+    brand_footer()
+
+
+# =============================================================================
 # Main
 # =============================================================================
 def main() -> None:
@@ -1696,7 +2500,7 @@ def main() -> None:
     )
     page = st.radio(
         "Scegli sezione",
-        ["Inserimento dati", "Review"],
+        ["Inserimento dati", "Review", "PDF"],
         horizontal=True,
         key="main_page_home",
     )
@@ -1757,6 +2561,10 @@ def main() -> None:
                 wizard_putt(session_name, user)
             brand_footer()
 
+    elif page == "PDF":
+        brand_header("Export PDF")
+        pdf_panel(user, session_name)
+
     else:
         brand_header()
         review_panel(user, session_name)
@@ -1764,5 +2572,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
     
     
