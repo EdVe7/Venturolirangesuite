@@ -35,39 +35,48 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-st.markdown(f"""
+st.markdown("""
     <style>
-    #MainMenu {{visibility: hidden;}} footer {{visibility: hidden;}} header {{visibility: hidden;}}
-    .stDeployButton {{display:none;}}
-    [data-testid="stToolbar"] {{visibility: hidden !important;}}
-    .stApp {{background: linear-gradient(180deg, #FFFFFF 0%, #FFFBEF 75%, #F8EFCF 100%);}}
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
+    .stDeployButton {display:none;}
+    [data-testid="stToolbar"] {visibility: hidden !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    [data-testid="stStatusWidget"] {display: none !important;}
+    .stAppDeployButton {display: none !important;}
+    div[class*="viewerBadge"] {display: none !important;}
+    a[href*="streamlit.io"] {display: none !important; visibility: hidden !important;}
+    a[href*="github.com"] {display: none !important; visibility: hidden !important;}
     </style>
     """, unsafe_allow_html=True)
-    
+
 
 BLACK = "#141414"
-BLACK_SOFT = "#2A2A2A"
-GOLD = "#C9A227"       # ocra
-GOLD_LIGHT = "#E8D48A"
-GOLD_DARK = "#7A5B12"
+BLACK_SOFT = "#3D3833"
+GOLD = "#D4B56A"
+GOLD_LIGHT = "#EAD9A8"
+GOLD_DARK = "#8A6E2C"
 WHITE = "#FFFFFF"
 OFF_WHITE = "#FFFCF7"
 TEXT = "#1A1A1A"
 MUTED = "#6B5B4A"
-ACCENT_BLUE = "#5A8DEE"
+ACCENT_BLUE = "#6B93C9"
 ACCENT_BLUE_SOFT = "#EEF4FF"
-SUCCESS_GREEN = "#17A673"
+SUCCESS_GREEN = "#4EAB8A"
 CARD_BG = "#FFFFFF"
-CARD_BORDER = "#F1DCC7"
-ORANGE = "#F08A24"
-ORANGE_SOFT = "#FFE7CF"
-ORANGE_LIGHT = "#FFF1E3"
+CARD_BORDER = "#E8D4BE"
+ORANGE = "#E39A4A"
+ORANGE_SOFT = "#F6E2CC"
+ORANGE_LIGHT = "#FBF3E8"
+SAGE = "#7A9A7A"
+TEAL = "#5B9AA8"
+DUSTY_ROSE = "#C47B7B"
+SAND = "#C4A574"
 
 PASSWORD_DEFAULT = "supernova.analytics"
 
 CATEGORIES = {
-    "RANGE": "Gioco lungo / Range",
-    "SHORT": "Gioco corto (<50 m)",
+    "RANGE": "Long game / Range",
+    "SHORT": "Short game (<50 m)",
     "PUTT": "Putting",
 }
 
@@ -145,12 +154,16 @@ CLUBS_LONG = [
     "5W",
     "7W",
     "9W",
+    "11W",
+    "DI",
     "2H",
     "3H",
     "4H",
     "5H",
     "6H",
     "7H",
+    "8H",
+    "9H",
     "1i",
     "2i",
     "3i",
@@ -166,6 +179,7 @@ CLUBS_LONG = [
     "SW",
     "LW",
     "UW",
+    "46°",
     "48°",
     "50°",
     "52°",
@@ -173,7 +187,9 @@ CLUBS_LONG = [
     "56°",
     "58°",
     "60°",
+    "62°",
     "64°",
+    "66°",
     "Chipper",
 ]
 CLUBS_SHORT = [
@@ -183,6 +199,7 @@ CLUBS_SHORT = [
     "AW",
     "PW",
     "UW",
+    "46°",
     "48°",
     "50°",
     "52°",
@@ -190,7 +207,9 @@ CLUBS_SHORT = [
     "56°",
     "58°",
     "60°",
+    "62°",
     "64°",
+    "66°",
     "9i",
     "8i",
     "7i",
@@ -203,30 +222,70 @@ CLUBS_SHORT = [
     "3H",
     "4H",
     "5H",
+    "7W",
+    "5W",
 ]
 
 PERIOD_LABELS = [
-    "Sessione corrente",
-    "Ultimi 7 giorni",
-    "Ultimo mese",
-    "Ultimi 6 mesi",
-    "Ultimo anno",
+    "Current session",
+    "Last 7 days",
+    "Last month",
+    "Last 6 months",
+    "Last year",
     "Lifelong",
 ]
 
-# Griglie distanza — solo tap, passo 5 m (putting: passo fine)
-DIST_5M_0_50 = [float(x) for x in range(0, 55, 5)]
-DIST_5M_5_50 = [float(x) for x in range(5, 55, 5)]
-DIST_5M_0_80 = [float(x) for x in range(0, 85, 5)]
+# Tap grids — extra common distances mixed in, still tap-only.
+DIST_5M_0_50 = [0.0, 2.0, 3.0, 5.0, 7.0, 10.0, 12.0, 15.0, 18.0, 20.0, 22.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0]
+DIST_5M_5_50 = [2.0, 3.0, 5.0, 7.0, 10.0, 12.0, 15.0, 18.0, 20.0, 22.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0]
+DIST_5M_0_80 = [0.0, 2.0, 3.0, 5.0, 7.0, 10.0, 12.0, 15.0, 18.0, 20.0, 22.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 70.0, 80.0]
 DIST_5M_0_250 = [float(x) for x in range(0, 255, 5)]
-DIST_5M_5_500 = [float(x) for x in range(5, 505, 5)]
-DIST_LAT_SHORT = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0]
-DIST_LAT_RANGE = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0]
-PUTT_START_DIST = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0]
-PUTT_END_DIST = [0.0, 0.3, 0.6, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 15.0]
+DIST_5M_5_500 = [float(x) for x in range(5, 555, 5)]
+DIST_LAT_SHORT = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0]
+DIST_LAT_RANGE = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 10.0, 12.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 80.0, 100.0]
+PUTT_START_DIST = [0.5, 0.8, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0, 15.0, 18.0, 20.0, 25.0, 30.0, 35.0]
+PUTT_END_DIST = [0.0, 0.15, 0.3, 0.45, 0.6, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 15.0, 20.0]
 LIE_AFTER_RANGE = ["Fairway", "First cut", "Semi-rough", "Rough", "Bunker", "Fringe", "Green"]
 
-CHART_PALETTE = [ORANGE, GOLD, BLACK_SOFT, ACCENT_BLUE, SUCCESS_GREEN, GOLD_DARK, "#D96E0A", "#8A6F55"]
+# Stored values stay as-is (same sheet). Buttons/help show English.
+UI_LABELS = {
+    "Centro": "Centre",
+    "Punta": "Toe",
+    "Tacco": "Heel",
+    "Shank": "Shank",
+    "Top": "Thin / top",
+    "Flappa": "Fat",
+    "Dritta": "Straight",
+    "Fade": "Fade",
+    "Draw": "Draw",
+    "Slice": "Slice",
+    "Hook": "Hook",
+    "Push": "Push",
+    "Pull": "Pull",
+    "Esattamente in linea": "On the aim line",
+    "A destra del bersaglio": "Right of the aim line",
+    "A sinistra del bersaglio": "Left of the aim line",
+    "A destra della buca": "Right of the hole",
+    "A sinistra della buca": "Left of the hole",
+    "Fairway": "Fairway",
+    "First cut": "First cut",
+    "Rough": "Rough",
+    "Semi-rough": "Semi-rough",
+    "Bunker": "Bunker",
+    "Fringe": "Fringe",
+    "Green": "Green",
+    "Bare lie / Terra dura": "Bare lie / hardpan",
+    "Pine straw": "Pine straw",
+    "Fuori limite area target": "Outside the target area",
+    "Molto negativa": "Very negative",
+    "Negativa": "Negative",
+    "Neutra": "Neutral",
+    "Positiva": "Positive",
+    "Molto positiva": "Very positive",
+    "Tee": "Tee",
+}
+
+CHART_PALETTE = [ORANGE, GOLD, TEAL, ACCENT_BLUE, SUCCESS_GREEN, SAGE, SAND, DUSTY_ROSE, GOLD_DARK]
 
 
 def inject_styles() -> None:
@@ -235,8 +294,16 @@ def inject_styles() -> None:
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Sans:wght@600;700&display=swap');
     #MainMenu {{visibility: hidden; height: 0;}}
-    footer {{visibility: hidden; height: 0;}}
-    header [data-testid="stHeader"] {{background: transparent;}}
+    footer {{visibility: hidden; height: 0; display: none !important;}}
+    header {{visibility: hidden; height: 0;}}
+    header [data-testid="stHeader"] {{background: transparent; display: none !important;}}
+    .stDeployButton, .stAppDeployButton {{display: none !important;}}
+    [data-testid="stToolbar"], [data-testid="stDecoration"], [data-testid="stStatusWidget"] {{
+        display: none !important; visibility: hidden !important;
+    }}
+    div[class*="viewerBadge"], a[href*="streamlit.io"], a[href*="github.com"] {{
+        display: none !important; visibility: hidden !important; height: 0 !important;
+    }}
     html, body, [class*="css"] {{
         font-family: 'Source Sans 3', 'Segoe UI', sans-serif;
         color: {TEXT};
@@ -488,6 +555,12 @@ def inject_styles() -> None:
     )
 
 
+def ui_label(value: Any) -> str:
+    if value is None:
+        return ""
+    return UI_LABELS.get(str(value), str(value))
+
+
 def brand_header(title: str | None = None) -> None:
     c1, c2 = st.columns([1, 3])
     with c1:
@@ -501,10 +574,6 @@ def brand_header(title: str | None = None) -> None:
     with c2:
         if title:
             st.markdown(f"### {title}")
-        st.markdown(
-            "<p class='sn-logo-caption'>Range Data Suite · Data over talent</p>",
-            unsafe_allow_html=True,
-        )
 
 
 def brand_footer() -> None:
@@ -616,7 +685,7 @@ def tap_grid(
         if fmt == "m":
             label = f"{float(opt):g} m"
         else:
-            label = str(opt)
+            label = ui_label(opt)
         if cols[i % cols_n].button(label, key=f"{key_prefix}_{i}", use_container_width=True):
             shot[field] = float(opt) if isinstance(opt, (int, float)) and fmt == "m" else opt
             st.session_state["wz_step"] = next_step
@@ -634,7 +703,7 @@ def tap_grid_action(
     cols = st.columns(cols_n)
     for i, opt in enumerate(options):
         label = f"{float(opt):g} m" if isinstance(opt, float) and opt != int(opt) else (
-            f"{int(opt)} m" if isinstance(opt, (int, float)) else str(opt)
+            f"{int(opt)} m" if isinstance(opt, (int, float)) else ui_label(opt)
         )
         if cols[i % cols_n].button(label, key=f"{key_prefix}_{i}", use_container_width=True):
             on_pick(opt)
@@ -863,15 +932,15 @@ def filter_period(df: pd.DataFrame, session_name: str, period: str) -> pd.DataFr
         return df
     d = df.copy()
     today = datetime.date.today()
-    if period == "Sessione corrente":
+    if period in ("Current session", "Sessione corrente"):
         return d[d["SessionName"] == session_name]
-    if period == "Ultimi 7 giorni":
+    if period in ("Last 7 days", "Ultimi 7 giorni"):
         return d[d["Date"] >= today - datetime.timedelta(days=7)]
-    if period == "Ultimo mese":
+    if period in ("Last month", "Ultimo mese"):
         return d[d["Date"] >= today - datetime.timedelta(days=30)]
-    if period == "Ultimi 6 mesi":
+    if period in ("Last 6 months", "Ultimi 6 mesi"):
         return d[d["Date"] >= today - datetime.timedelta(days=182)]
-    if period == "Ultimo anno":
+    if period in ("Last year", "Ultimo anno"):
         return d[d["Date"] >= today - datetime.timedelta(days=365)]
     return d
 
@@ -884,10 +953,11 @@ def plot_pie(df: pd.DataFrame, column: str, title: str, legend_help: str) -> Non
         s = pd.to_numeric(df[column], errors="coerce").dropna().astype(int).astype(str)
     else:
         s = df[column].astype(str)
-    s = s.replace("nan", "(vuoto)").replace("", "(vuoto)")
+    s = s.replace("nan", "(empty)").replace("", "(empty)")
     vc = s.value_counts()
+    vc.index = [ui_label(i) for i in vc.index]
     if vc.empty:
-        st.info("Nessuna categoria disponibile.")
+        st.info("No category available.")
         return
     st.markdown("<div class='zrs-chart-box'>", unsafe_allow_html=True)
     chart_block(legend_help)
@@ -899,7 +969,9 @@ def plot_pie(df: pd.DataFrame, column: str, title: str, legend_help: str) -> Non
         color_discrete_sequence=CHART_PALETTE,
     )
     fig.update_traces(textposition="inside", textinfo="percent+label")
+    fig.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
     eng_chart_layout(fig, title)
+    fig.update_layout(margin=dict(t=70, b=56, l=48, r=48), height=460)
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -1166,23 +1238,23 @@ def directional_bias_panel(df_sector: pd.DataFrame) -> None:
     center = int((d["x"] == 0).sum())
     total = len(d)
     st.markdown("#### Directional bias")
-    st.caption("Distribuzione colpi a sinistra/destra/centrali rispetto alla linea target.")
+    st.caption("Share of shots left, on the aim line, or right of the line you picked.")
     bias = pd.DataFrame(
         {
-            "Direzione": ["Sinistra", "In linea", "Destra"],
+            "Direzione": ["Left", "On line", "Right"],
             "Colpi": [left, center, right],
             "Percentuale": [left / total * 100, center / total * 100, right / total * 100],
         }
     )
     st.markdown("<div class='zrs-chart-box'>", unsafe_allow_html=True)
-    chart_block("Percentuale colpi a sinistra, in linea o a destra rispetto al target.")
+    chart_block("Share of shots left, on line, or right of the aim line.")
     fig = px.bar(
         bias,
         x="Direzione",
         y="Percentuale",
         text=bias["Percentuale"].map(lambda v: f"{v:.1f}%"),
         color="Direzione",
-        color_discrete_map={"Sinistra": "#d45858", "In linea": SUCCESS_GREEN, "Destra": ACCENT_BLUE},
+        color_discrete_map={"Left": DUSTY_ROSE, "On line": SUCCESS_GREEN, "Right": ACCENT_BLUE},
         title="Bias laterale medio",
     )
     eng_chart_layout(fig, "Bias laterale medio", "Direzione", "% colpi")
@@ -1816,7 +1888,7 @@ def _bias_frame(df_sector: pd.DataFrame) -> pd.DataFrame:
     total = max(len(d), 1)
     return pd.DataFrame(
         {
-            "Direzione": ["Sinistra", "In linea", "Destra"],
+            "Direzione": ["Left", "On line", "Right"],
             "Colpi": [left, center, right],
             "Percentuale": [left / total * 100, center / total * 100, right / total * 100],
         }
@@ -1830,8 +1902,10 @@ def _value_counts_series(df: pd.DataFrame, column: str) -> pd.Series:
         s = pd.to_numeric(df[column], errors="coerce").dropna().astype(int).astype(str)
     else:
         s = df[column].astype(str)
-    s = s.replace("nan", "(vuoto)").replace("", "(vuoto)")
-    return s.value_counts()
+    s = s.replace("nan", "(empty)").replace("", "(empty)")
+    vc = s.value_counts()
+    vc.index = [ui_label(i) for i in vc.index]
+    return vc
 
 
 def build_review_pdf(
@@ -1852,16 +1926,17 @@ def build_review_pdf(
     from reportlab.platypus import Image as RLImage
     from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-    palette = [ORANGE, GOLD, BLACK_SOFT, ACCENT_BLUE, SUCCESS_GREEN, GOLD_DARK, "#D96E0A", "#8A6F55"]
+    palette = [ORANGE, GOLD, TEAL, ACCENT_BLUE, SUCCESS_GREEN, SAGE, SAND, DUSTY_ROSE, GOLD_DARK]
 
     buf = io.BytesIO()
+    page_w, page_h = A4
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        leftMargin=1.2 * cm,
-        rightMargin=1.2 * cm,
-        topMargin=1.1 * cm,
-        bottomMargin=1.1 * cm,
+        leftMargin=2.4 * cm,
+        rightMargin=2.4 * cm,
+        topMargin=1.6 * cm,
+        bottomMargin=2.0 * cm,
         title=f"{APP_NAME} — Review {user}",
         author="Andrea Zanardelli",
     )
@@ -1886,10 +1961,10 @@ def build_review_pdf(
     h3 = ParagraphStyle(
         "ZrsH3",
         parent=styles["Heading3"],
-        fontSize=10,
+        fontSize=11,
         textColor=rl_colors.HexColor(GOLD_DARK),
-        spaceBefore=6,
-        spaceAfter=3,
+        spaceBefore=14,
+        spaceAfter=8,
     )
     body = ParagraphStyle(
         "ZrsBody",
@@ -2227,7 +2302,7 @@ def build_review_pdf(
                 fig, ax = plt.subplots(figsize=(6.2, 3.0))
                 fig.patch.set_facecolor(OFF_WHITE)
                 ax.set_facecolor(WHITE)
-                cmap = {"Sinistra": "#d45858", "In linea": SUCCESS_GREEN, "Destra": ACCENT_BLUE}
+                cmap = {"Left": DUSTY_ROSE, "On line": SUCCESS_GREEN, "Right": ACCENT_BLUE}
                 ax.bar(bias["Direzione"], bias["Percentuale"], color=[cmap[x] for x in bias["Direzione"]])
                 ax.set_ylabel("% colpi")
                 ax.set_title("Bias laterale medio")
@@ -2572,6 +2647,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
     
     
